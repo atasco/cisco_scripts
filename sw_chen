@@ -1,0 +1,129 @@
+#!/usr/bin/expect -f
+
+# —————-                                               -————— #
+# by aH - 2014                                                #
+# Modifications:                                              #
+#	04/11/2014 - Creation                                     #
+#                                                             #
+# —————-                                               -————— #
+
+# —————- configuration —————- #
+
+set username soporte
+
+set cfg_dir ./etc
+set log_dir ./logs
+set log_name sw_chen.log
+set log_file $log_dir/$log_name
+set ssw_file $cfg_dir/ssh_switches.dat
+set tsw_file $cfg_dir/telnet_switches.dat
+
+set timeout 9
+set send_slow {10 .001}
+# debugging: 0=no 1=yes
+exp_internal 0
+# spawn process output: 0=no 1=yes
+log_user 1
+
+# —————- check passed parameters —————- #
+
+if { [llength $argv] != 2} {
+	send_user "\nERROR: Faltan Argumentos\n"
+	send_user "========================\n"
+	send_user "USO:        sw_chen ENABLE KEY\n\n"
+	send_user "ENABLE:     NEW o ORG\n"
+	send_user "KEY:        LLAVE de CIFRADO\n"
+	send_user "\n"
+	exit 1
+}
+
+if { [lindex $argv 0] eq "NEW" } {
+		set ENABLE_FLAG 0
+	} elseif { [lindex $argv 0] eq "ORG" } {
+		set ENABLE_FLAG 1
+	} else {
+		send_user "\nERROR: Argumentos Erroneos\n"
+		send_user "==========================\n"
+		send_user "ENABLE INCORRECTO\n"
+		send_user "\n"
+		exit 1
+}
+
+if { [lindex $argv 1] ne "" } {
+		set key [lindex $argv 1]
+	} else {
+		send_user "\nERROR: Argumentos Erroneos\n"
+		send_user "==========================\n"
+		send_user "KEY NO VALIDA\n"
+		send_user "\n"
+		exit 1
+}
+
+# ————– password decrypt ————– #
+
+proc password_decrypt filename {
+	global key
+	catch {exec openssl des3 -d -salt -in $filename -k $key} dpd
+	return $dpd
+}
+
+if {$ENABLE_FLAG == 0} {
+	set cur_enable [password_decrypt $cfg_dir/org_enable.enc]
+	set new_enable [password_decrypt $cfg_dir/new_enable.enc]
+} else {
+	set cur_enable [password_decrypt $cfg_dir/new_enable.enc]
+	set new_enable [password_decrypt $cfg_dir/org_enable.enc]
+}
+
+set password [password_decrypt $cfg_dir/swpd.enc]
+
+# ————– start log ————– #
+
+set logfile_id [open $log_file w]
+set start_log "### /START-SESSION/ [exec date] ###\n"
+puts $logfile_id $start_log
+
+# ————– ssh switches ————– #
+
+set fp [open $ssw_file r]
+
+while {[gets $fp hostname] != -1} {
+#	send_log "### /START-SESSION/ IP: $hostname @ [exec date] ###\n\n"
+	spawn ssh -q -o StrictHostKeyChecking=no $username@$hostname
+	expect {
+  		timeout { send_user "\nTimeout SSH\n"; exit 1 }
+  		eof { send_user "\nFallo SSH para $hostname\n"; exit 1 }
+  		"*assword:" { send "$password\r" }
+  	}
+  	expect {
+  		default { send_user "\nNo se puede entrar en modo privilegiado.\n"; exit 1 }
+  		"*>" {
+    	send "enable\r"
+    	expect "*assword"
+    	send "$cur_enable\r"
+    	expect "*#"
+    	send "configure terminal\r"
+    	expect "*(config)#"
+    	send "enable secret $new_enable\r"
+    	expect "*(config)#"
+    	send "end\r"
+    	expect "*#"
+    	send "exit\r"
+    	send_user "\n$hostname: Cambiada Password de ENABLE\n\n"
+    	set result "$hostname @ [exec date]: Cambiada Password de ENABLE ([lindex $argv 0])\n"
+    	puts $logfile_id $result
+  		}
+	}
+}
+
+close $fp
+
+# ————– end log and script data return ————– #
+
+set end_log "### /END-SESSION/ [exec date] ###\n"
+puts $logfile_id $end_log
+close $logfile_id
+
+close
+
+# EOF
