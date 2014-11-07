@@ -2,8 +2,6 @@
 
 # —————-                                               -————— #
 # by aH - 2014                                                #
-# Modifications:                                              #
-#	04/11/2014 - Creation                                     #
 #                                                             #
 # —————-                                               -————— #
 
@@ -14,16 +12,26 @@ set username soporte
 set cfg_dir ./etc
 set log_dir ./logs
 set log_name sw_chen.log
-set log_file $log_dir/$log_name
+
 set ssw_file $cfg_dir/ssh_switches.dat
 set tsw_file $cfg_dir/telnet_switches.dat
+set swpd swpd.enc
+set org_enablepd org_enable.enc
+set new_enablepd new_enable.enc
+
+exp_internal 0
+log_user 0
+
+# —————- don't change below here —————- #
+
+set enc_swpd $cfg_dir/$swpd
+set enc_org_enable $cfg_dir/$org_enablepd
+set enc_new_enable $cfg_dir/$new_enablepd
+
+set log_file $log_dir/$log_name
 
 set timeout 9
 set send_slow {10 .001}
-# debugging: 0=no 1=yes
-exp_internal 0
-# spawn process output: 0=no 1=yes
-log_user 1
 
 # —————- check passed parameters —————- #
 
@@ -68,19 +76,19 @@ proc password_decrypt filename {
 }
 
 if {$ENABLE_FLAG == 0} {
-	set cur_enable [password_decrypt $cfg_dir/org_enable.enc]
-	set new_enable [password_decrypt $cfg_dir/new_enable.enc]
+	set cur_enable [password_decrypt $enc_org_enable]
+	set new_enable [password_decrypt $enc_new_enable]
 } else {
-	set cur_enable [password_decrypt $cfg_dir/new_enable.enc]
-	set new_enable [password_decrypt $cfg_dir/org_enable.enc]
+	set cur_enable [password_decrypt $enc_new_enable]
+	set new_enable [password_decrypt $enc_org_enable]
 }
 
-set password [password_decrypt $cfg_dir/swpd.enc]
+set password [password_decrypt $enc_swpd]
 
 # ————– start log ————– #
 
-set logfile_id [open $log_file w]
-set start_log "### /START-SESSION/ [exec date] ###\n"
+set logfile_id [open $log_file a+]
+set start_log "######## /START-SESSION/ [exec date] ########"
 puts $logfile_id $start_log
 
 # ————– ssh switches ————– #
@@ -88,7 +96,6 @@ puts $logfile_id $start_log
 set fp [open $ssw_file r]
 
 while {[gets $fp hostname] != -1} {
-#	send_log "### /START-SESSION/ IP: $hostname @ [exec date] ###\n\n"
 	spawn ssh -q -o StrictHostKeyChecking=no $username@$hostname
 	expect {
   		timeout { send_user "\nTimeout SSH\n"; exit 1 }
@@ -109,8 +116,47 @@ while {[gets $fp hostname] != -1} {
     	send "end\r"
     	expect "*#"
     	send "exit\r"
-    	send_user "\n$hostname: Cambiada Password de ENABLE\n\n"
-    	set result "$hostname @ [exec date]: Cambiada Password de ENABLE ([lindex $argv 0])\n"
+    	send_user "$hostname: Cambiada Password de ENABLE\n"
+    	set result "$hostname @ [exec date]: Cambiada Password de ENABLE ([lindex $argv 0])"
+    	puts $logfile_id $result
+  		}
+	}
+}
+
+close $fp
+
+# ————– telnet switches ————– #
+
+set fp [open $tsw_file r]
+
+while {[gets $fp hostname] != -1} {
+	spawn telnet $hostname
+	expect {
+  		timeout { send_user "\nTimeout TELNET\n"; exit 1 }
+  		eof { send_user "\nFallo TELNET para $hostname\n"; exit 1 }
+  		"*sername:" { send "$username\r" }
+  	}
+	expect {
+  		timeout { send_user "\nPassword Incorrecta\n"; exit 1 }
+  		eof { send_user "\nFallo TELNET para $hostname\n"; exit 1 }
+  		"*assword:" { send "$password\r" }	
+  	}  	
+  	expect {
+  		default { send_user "\nNo se puede entrar en modo privilegiado.\n"; exit 1 }
+  		"*>" {
+    	send "enable\r"
+    	expect "*assword"
+    	send "$cur_enable\r"
+    	expect "*#"
+    	send "configure terminal\r"
+    	expect "*(config)#"
+    	send "enable secret $new_enable\r"
+    	expect "*(config)#"
+    	send "end\r"
+    	expect "*#"
+    	send "exit\r"
+    	send_user "$hostname: Cambiada Password de ENABLE\n"
+    	set result "$hostname @ [exec date]: Cambiada Password de ENABLE ([lindex $argv 0])"
     	puts $logfile_id $result
   		}
 	}
@@ -120,7 +166,7 @@ close $fp
 
 # ————– end log and script data return ————– #
 
-set end_log "### /END-SESSION/ [exec date] ###\n"
+set end_log "######## /END-SESSION/ [exec date] ##########\n"
 puts $logfile_id $end_log
 close $logfile_id
 
