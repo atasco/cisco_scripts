@@ -14,32 +14,44 @@ Donde:
 * KEY: Llave de cifrado para la password de acceso al dispositivo
 
 ### Configuración
-set username soporte
 
-set cfg_dir ./etc
-set log_dir ./logs
-set log_name sw_chen.log
+Ajustar los siguientes parámetros:
 
-set ssw_file $cfg_dir/ssh_switches.dat
-set tsw_file $cfg_dir/telnet_switches.dat
-set swpd swpd.enc
-set org_enablepd org_enable.enc
-set new_enablepd new_enable.enc
+* username: Cuenta de usuario con permisos de administración (por defecto *soporte*).
+* cfg_dir: Directorio donde se encuentran los ficheros de configuración (por defecto *./etc*).
+* log_dir: Directorio donde se guardarán los ficheros de log (por defecto *./logs*).
+* log_name: Nombre del fichero de log (por defecto *fg_vpn.log*).
+* ssw_file:  Nombre del fichero con las IPs de los switches/routers accesibles a través de SSH (por defect *ssh_switches.dat*).
+* tsw_file:  Nombre del fichero con las IPs de los switches/routers accesibles a través de TELNET (por defect *telnet_switches.dat*).
+* swpd: Nombre del fichero con la password cifrada del usuario (por defecto *swpd.enc*).
+* org_enablepd: Nombre del fichero con la password cifrada de ENABLE original (por defecto *org_enable.enc*).
+* new_enablepd: Nombre del fichero con la password cifrada de ENABLE nueva (por defecto *new_enable.enc*).
+* exp_internal: Activación/desactivación de debugging (0=no 1=si).
+* log_user: Activar/desactivar la salida del proceso de spawn (0=no 1=si).
 
-exp_internal 0
-log_user 0
+#### Ficheros
 
-set username soporte                       # user account name 
+Se guardan en el subdirectorio `etc` ubicado en el directorio desde el que se lanza el script. Son los siguientes:
 
-set cfg_dir ./etc                          # directory with configuration files
-set log_dir ./logs                         # directory with log files
-set log_name sw_chen.log                   # log file name
+* SSL SWITCH/ROUTER: Fichero en texto plano que contiene las IPs de los switches/routers accesibles vía SSH.
+* TELNET SWITCH/ROUTER: Fichero en texto plano que contiene las IPs de los switches/routers accesibles vía TELNET.
 
-set ssw_file $cfg_dir/ssh_switches.dat     # file with IP for ssh access switches
-set tsw_file $cfg_dir/telnet_switches.dat  # file with IP for telnet access switches
-set swpd swpd.enc                          # file with user encrypted password
-set org_enable org_enable.enc              # file with original enable encrypted password
-set new_enable new_enable.enc              # file with new enable encrypted password
+> Por ejemplo, `ssh_switches.dat`:
+>  
+>  10.1.1.1    
+>  10.1.2.1
+>  ...
 
-exp_internal 0                             # debugging: 0=no 1=yes
-log_user 1                                 # spawn process output: 0=no 1=yes
+* PASSWORDS CIFRADAS: Fichero con las password cifradas `swpd.enc`, `org_enable.enc` y `new_enable.enc`.
+
+### Cifrado de passwords
+
+Para cifrar la password, guardada en texto plano en un fichero (swpd.dec):
+
+``` sh
+$ openssl des3 -salt -in swpd.dec -out swpd.enc
+enter des-ede3-cbc encryption password:
+Verifying - enter des-ede3-cbc encryption password:
+```
+
+La *KEY* que pasamos al script es la `des-ede3-cbc encryption password` que se solicita en el comando anterior.
